@@ -2,6 +2,8 @@ import os
 import platform
 from typing import Optional
 
+from webdriver_manager.chrome import ChromeDriverManager
+
 
 class DriverManager:
     """
@@ -15,12 +17,12 @@ class DriverManager:
         fixed_path = DriverManager._get_fixed_chromedriver_path()
         if fixed_path and os.path.exists(fixed_path):
             return fixed_path
-        
+
         # 然后尝试webdriver-manager
         managed_path = DriverManager._get_webdriver_manager_path()
         if managed_path:
             return managed_path
-            
+
         # 最后返回None，让selenium使用系统PATH中的驱动
         return None
 
@@ -48,8 +50,15 @@ class DriverManager:
         # 1. 项目根目录下的 drivers/{platform} 目录
         # 2. 插件目录下的 drivers/{platform} 目录
         fixed_paths = [
-            os.path.join(os.getcwd(), "drivers", chromedriver_folder, chromedriver_filename),
-            os.path.join(os.path.dirname(__file__), "drivers", chromedriver_folder, chromedriver_filename),
+            os.path.join(
+                os.getcwd(), "drivers", chromedriver_folder, chromedriver_filename
+            ),
+            os.path.join(
+                os.path.dirname(__file__),
+                "drivers",
+                chromedriver_folder,
+                chromedriver_filename,
+            ),
         ]
 
         for path in fixed_paths:
@@ -64,8 +73,6 @@ class DriverManager:
     def _get_webdriver_manager_path():
         """使用webdriver-manager获取chromedriver路径"""
         try:
-            from webdriver_manager.chrome import ChromeDriverManager
-            from webdriver_manager.core.utils import ChromeType
             # 根据操作系统类型决定Chrome类型
             system = platform.system().lower()
             if system in ["windows", "linux", "darwin"]:
@@ -107,7 +114,9 @@ class DriverManager:
         # 2. 插件目录下的 drivers/{platform} 目录
         fixed_paths = [
             os.path.join(os.getcwd(), "drivers", chrome_folder, chrome_filename),
-            os.path.join(os.path.dirname(__file__), "drivers", chrome_folder, chrome_filename),
+            os.path.join(
+                os.path.dirname(__file__), "drivers", chrome_folder, chrome_filename
+            ),
         ]
 
         for path in fixed_paths:
@@ -128,9 +137,14 @@ class DriverManager:
         info = {
             "system": system,
             "chromedriver_path": chromedriver_path,
-            "chromedriver_exists": chromedriver_path is not None and os.path.exists(chromedriver_path) if chromedriver_path else False,
+            "chromedriver_exists": chromedriver_path is not None
+            and os.path.exists(chromedriver_path)
+            if chromedriver_path
+            else False,
             "chrome_path": chrome_path,
-            "chrome_exists": chrome_path is not None and os.path.exists(chrome_path) if chrome_path else False
+            "chrome_exists": chrome_path is not None and os.path.exists(chrome_path)
+            if chrome_path
+            else False,
         }
 
         return info
