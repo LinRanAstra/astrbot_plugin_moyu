@@ -211,3 +211,6 @@ drivers
 
 # abstbot
 data
+
+# vscode
+.vscode
