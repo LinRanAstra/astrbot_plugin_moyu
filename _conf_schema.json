@@ -1,0 +1,23 @@
+{
+  "cron_expression": {
+    "type": "string",
+    "description": "摸鱼图片发送的定时表达式",
+    "hint": "使用标准cron表达式，例如 '0 8 * * *' 表示每天早上8点发送",
+    "default": "0 8 * * *"
+  },
+  "enabled": {
+    "type": "bool",
+    "description": "是否启用定时摸鱼功能",
+    "hint": "开启后将在设定时间自动发送摸鱼图片",
+    "default": false
+  },
+  "target_sessions": {
+    "type": "list",
+    "description": "目标会话列表",
+    "hint": "要发送摸鱼图片的目标会话ID列表，格式为 'platform_id:message_type:session_id'",
+    "default": [],
+    "items": {
+      "type": "string"
+    }
+  }
+}
