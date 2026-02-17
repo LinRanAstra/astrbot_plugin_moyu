@@ -1,5 +1,6 @@
 import os
 import platform
+from typing import Optional
 
 
 class DriverManager:
@@ -9,6 +10,22 @@ class DriverManager:
 
     @staticmethod
     def get_chromedriver_path():
+        """根据操作系统获取chromedriver路径，按优先级顺序：固定路径 -> webdriver-manager -> 系统环境变量"""
+        # 首先尝试固定路径
+        fixed_path = DriverManager._get_fixed_chromedriver_path()
+        if fixed_path and os.path.exists(fixed_path):
+            return fixed_path
+        
+        # 然后尝试webdriver-manager
+        managed_path = DriverManager._get_webdriver_manager_path()
+        if managed_path:
+            return managed_path
+            
+        # 最后返回None，让selenium使用系统PATH中的驱动
+        return None
+
+    @staticmethod
+    def _get_fixed_chromedriver_path():
         """根据操作系统获取固定路径下的 chromedriver 路径"""
         system = platform.system().lower()
 
@@ -41,6 +58,28 @@ class DriverManager:
             if os.path.exists(normalized_path):
                 return normalized_path
 
+        return None
+
+    @staticmethod
+    def _get_webdriver_manager_path():
+        """使用webdriver-manager获取chromedriver路径"""
+        try:
+            from webdriver_manager.chrome import ChromeDriverManager
+            from webdriver_manager.core.utils import ChromeType
+            # 根据操作系统类型决定Chrome类型
+            system = platform.system().lower()
+            if system in ["windows", "linux", "darwin"]:
+                # 尝试获取最新版本的chromedriver
+                path = ChromeDriverManager().install()
+                return path
+        except ImportError:
+            # 如果webdriver-manager未安装，则返回None
+            print("webdriver-manager未安装，跳过使用此方式获取驱动")
+            return None
+        except Exception as e:
+            # 如果获取驱动过程中出现错误，记录错误并返回None
+            print(f"通过webdriver-manager获取驱动时出错: {e}")
+            return None
         return None
 
     @staticmethod
