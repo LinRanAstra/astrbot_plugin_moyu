@@ -14,7 +14,7 @@
   "target_sessions": {
     "type": "list",
     "description": "目标会话列表",
-    "hint": "要发送摸鱼图片的目标会话ID列表，格式为 'platform_id:message_type:session_id'",
+    "hint": "要发送摸鱼图片的目标会话ID列表，可以是群聊ID或私聊ID",
     "default": [],
     "items": {
       "type": "string"
