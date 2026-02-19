@@ -1,108 +1,62 @@
-import time
-
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import WebDriverWait
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+from playwright.sync_api import sync_playwright
 
 from astrbot.api import logger
 
-from .driver_manager import DriverManager
 
+def capture_poster_without_obstacle(url, output_path="poster_clean.png", timeout=30000):
+    """使用 Playwright 打开页面、移除遮挡并对 #poster 元素截图。
 
-def capture_poster_without_obstacle(url, output_path="poster_clean.png"):
-    # 浏览器配置（无头 + 固定窗口）
-    chrome_options = Options()
-    chrome_options.add_argument("--headless=new")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--window-size=1920,1080")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-
-    # 获取适合当前系统的 chromedriver 路径
-    chromedriver_path = DriverManager.get_chromedriver_path()
-    chrome_options.binary_location = DriverManager.get_chrome_browser_path()  # 获取 Chrome 浏览器路径（如果需要指定）
+    返回截图路径或 False（失败）。
+    """
     try:
-        if chromedriver_path:
-            # 使用找到的特定路径的 chromedriver
-            driver = webdriver.Chrome(
-                service=Service(executable_path=chromedriver_path),
-                options=chrome_options,
+        with sync_playwright() as p:
+            browser = p.chromium.launch(
+                headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"]
             )
-        else:
-            # 如果没有找到特定路径的 chromedriver，则尝试使用系统 PATH 中的
-            logger.warning("未找到预置的 chromedriver，尝试使用系统 PATH 中的版本")
-            driver = webdriver.Chrome(options=chrome_options)
-    except Exception as e:
-        logger.warning(f"使用自定义 chromedriver 失败，尝试使用系统 PATH 中的驱动: {e}")
-        try:
-            driver = webdriver.Chrome(options=chrome_options)  # 回退方案
-        except Exception as e2:
-            logger.error(f"所有 Chrome 驱动加载方法均失败: {e2}")
-            raise
+            context = browser.new_context(viewport={"width": 1920, "height": 1080})
+            page = context.new_page()
 
-    try:
-        driver.get(url)
-        logger.info(f"已加载页面: {url}")
-        time.sleep(1.5)  # 基础加载等待（可配合显式等待优化）
+            page.goto(url, wait_until="networkidle", timeout=timeout)
+            logger.info(f"已加载页面: {url}")
 
-        # ============ 步骤1：安全移除遮挡元素 ============
-        remove_script = """
-            const xpath = '/html/body/div[1]/div[2]/div[2]';
-            const result = document.evaluate(
-                xpath, document, null,
-                XPathResult.FIRST_ORDERED_NODE_TYPE, null
-            );
-            const el = result.singleNodeValue;
-            if (el) {
-                el.remove();  // 完全移除，不留占位
-                return 'removed';
-            }
-            return 'not_found';
-        """
-        status = driver.execute_script(remove_script)
-        logger.info(f"遮挡元素处理结果: {status}")
+            # 步骤1：尝试移除已知遮挡元素（安全地忽略不存在情况）
+            try:
+                page.locator("xpath=/html/body/div[1]/div[2]/div[2]").evaluate(
+                    "el => el.remove()"
+                )
+                logger.info("尝试移除遮挡元素（如存在）")
+            except Exception:
+                logger.debug("遮挡元素未找到或移除失败，继续")
 
-        # ============ 步骤2：等待并截图目标元素 ============
-        # 等待元素存在且可见（避免被其他元素遮挡）
-        poster = WebDriverWait(driver, 15).until(
-            EC.visibility_of_element_located((By.XPATH, '//*[@id="poster"]'))
-        )
-        logger.info("目标元素已就绪")
-
-        # 滚动至视图中心（确保完整渲染）
-        driver.execute_script(
-            "arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});",
-            poster,
-        )
-        time.sleep(0.8)  # 等待滚动与渲染稳定
-
-        # 截图保存
-        poster.screenshot(output_path)
-        logger.info(f"元素尺寸: {poster.size}, 位置: {poster.location}")
-
-        return output_path
+            # 步骤2：等待目标元素可见并截图
+            try:
+                page.wait_for_selector("#poster", state="visible", timeout=timeout)
+                poster = page.locator("#poster")
+                poster.scroll_into_view_if_needed()
+                poster.screenshot(path=output_path)
+                logger.info(f"已保存截图: {output_path}")
+                return output_path
+            except PlaywrightTimeoutError as e:
+                logger.error(f"等待目标元素超时: {e}")
+                # 保存调试截图
+                try:
+                    page.screenshot(path="debug_fullpage.png", full_page=True)
+                    logger.info("已保存调试调试图: debug_fullpage.png")
+                except Exception:
+                    logger.debug("调试截图保存失败")
+                return False
+            finally:
+                context.close()
+                browser.close()
 
     except Exception as e:
-        logger.error(f"❌ 处理失败: {str(e)}")
-        # 保存调试截图
-        try:
-            driver.save_screenshot("debug_fullpage.png")
-            logger.info("已保存调试截图: debug_fullpage.png")
-        except:
-            pass
+        logger.error(f"Playwright 运行失败: {e}")
         return False
 
-    finally:
-        driver.quit()
-        logger.info("浏览器已关闭")
 
-
-# ============ 使用示例 ============
 if __name__ == "__main__":
-    target_url = "https://zhou75i.github.io/moyu/"  # 替换为实际网址
+    target_url = "https://moyu.ranawa.com"  # 替换为实际网址
     success = capture_poster_without_obstacle(target_url)
     if success:
         print("截图成功！")

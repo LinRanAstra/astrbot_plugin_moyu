@@ -5,7 +5,6 @@ from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, MessageEventResult, filter
 from astrbot.api.star import Context, Star, register
 from astrbot.core.cron.manager import CronJobManager
-from astrbot.core.db.po import CronJob
 from astrbot.core.message.message_event_result import MessageChain
 
 from .apitest import capture_poster_without_obstacle
@@ -42,64 +41,67 @@ class MyPlugin(Star):
         """启动定时任务"""
         # 检查是否已有定时任务
         if self.moyu_job_id:
-            job = await self.cron_manager.get_cron_job(self.moyu_job_id)
+            job = await self.cron_manager.db.get_cron_job(self.moyu_job_id)
             if job and job.enabled:
                 logger.info("定时摸鱼任务已经存在")
                 return
 
         async def send_moyu_image(**kwargs):
-            moyu_img_path = capture_poster_without_obstacle(
-                "https://zhou75i.github.io/moyu/"
-            )
-            if moyu_img_path:
-                img_component = Comp.Image(moyu_img_path)
+            try:
+                moyu_img_path = capture_poster_without_obstacle(
+                    "https://moyu.ranawa.com"
+                )
+                if moyu_img_path:
+                    img_component = Comp.Image(moyu_img_path)
 
-                # 创建MessageChain对象
-                message_chain = MessageChain(chain=[img_component])
+                    # 创建MessageChain对象
+                    message_chain = MessageChain(chain=[img_component])
 
-                # 如果有指定目标会话，发送到这些会话
-                if target_sessions:
-                    for session_str in target_sessions:
-                        try:
-                            from astrbot.core.platform.message_session import (
-                                MessageSession,
-                            )
+                    # 如果有指定目标会话，发送到这些会话
+                    if target_sessions:
+                        for session_str in target_sessions:
+                            try:
+                                from astrbot.core.platform.message_session import (
+                                    MessageSession,
+                                )
 
-                            session = MessageSession.from_str(session_str)
+                                session = MessageSession.from_str(session_str)
+                                await self.context.send_message(
+                                    session, message_chain
+                                )  # 传递MessageChain对象
+                            except Exception as e:
+                                logger.error(f"发送到会话 {session_str} 失败: {e}")
+                    else:
+                        # 如果没有指定目标会话，从kwargs中获取会话
+                        session = kwargs.get("session")
+                        if session:
                             await self.context.send_message(
                                 session, message_chain
                             )  # 传递MessageChain对象
-                        except Exception as e:
-                            logger.error(f"发送到会话 {session_str} 失败: {e}")
                 else:
-                    # 如果没有指定目标会话，从kwargs中获取会话
-                    session = kwargs.get("session")
-                    if session:
-                        await self.context.send_message(
-                            session, message_chain
-                        )  # 传递MessageChain对象
-            else:
-                # 发送错误信息
-                error_msg = MessageChain(
-                    chain=[Comp.Plain("定时摸鱼失败：无法生成摸鱼图片")]
-                )
-                if target_sessions:
-                    for session_str in target_sessions:
-                        try:
-                            from astrbot.core.platform.message_session import (
-                                MessageSession,
-                            )
+                    # 发送错误信息
+                    error_msg = MessageChain(
+                        chain=[Comp.Plain("定时摸鱼失败：无法生成摸鱼图片")]
+                    )
+                    if target_sessions:
+                        for session_str in target_sessions:
+                            try:
+                                from astrbot.core.platform.message_session import (
+                                    MessageSession,
+                                )
 
-                            session = MessageSession.from_str(session_str)
-                            await self.context.send_message(
-                                session, error_msg
-                            )  # 传递MessageChain对象
-                        except Exception as e:
-                            logger.error(f"发送到会话 {session_str} 失败: {e}")
-                elif "session" in kwargs:
-                    await self.context.send_message(
-                        kwargs["session"], error_msg
-                    )  # 传递MessageChain对象
+                                session = MessageSession.from_str(session_str)
+                                await self.context.send_message(
+                                    session, error_msg
+                                )  # 传递MessageChain对象
+                            except Exception as e:
+                                logger.error(f"发送到会话 {session_str} 失败: {e}")
+                    elif "session" in kwargs:
+                        await self.context.send_message(
+                            kwargs["session"], error_msg
+                        )  # 传递MessageChain对象
+            except Exception as e:
+                logger.error(f"定时摸鱼任务执行失败: {e}")
 
         # 添加基本定时任务
         job = await self.cron_manager.add_basic_job(
@@ -123,17 +125,23 @@ class MyPlugin(Star):
         """这是一个摸鱼指令，发送一张摸鱼图片"""
         message_chain = event.get_messages()  # 用户所发的消息的消息链
         logger.info(message_chain)
-        moyu_img_path = capture_poster_without_obstacle(
-            "https://zhou75i.github.io/moyu/"
-        )
-        if moyu_img_path:
-            chain =[
+
+        try:
+            moyu_img_path = capture_poster_without_obstacle("https://moyu.ranawa.com/")
+            if moyu_img_path:
+                chain = [
                     Comp.Image(moyu_img_path),
-                ]
-        else:
-            chain=[
+                ]  # type: list[Comp.BaseMessageComponent]
+            else:
+                chain = [
                     Comp.Plain("生成摸鱼图片失败"),
-            ]
+                ]  # type: list[Comp.BaseMessageComponent]
+        except Exception as e:
+            logger.error(f"生成摸鱼图片时发生错误: {e}")
+            chain = [
+                Comp.Plain("生成摸鱼图片时发生错误"),
+            ]  # type: list[Comp.BaseMessageComponent]
+
         yield event.chain_result(chain)
 
     async def terminate(self):
