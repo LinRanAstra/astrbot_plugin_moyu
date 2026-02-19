@@ -1,5 +1,3 @@
-from typing import Any, Dict
-
 import astrbot.api.message_components as Comp
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, MessageEventResult, filter
@@ -48,7 +46,7 @@ class MyPlugin(Star):
 
         async def send_moyu_image(**kwargs):
             try:
-                moyu_img_path = capture_poster_without_obstacle(
+                moyu_img_path = await capture_poster_without_obstacle(
                     "https://moyu.ranawa.com"
                 )
                 if moyu_img_path:
@@ -127,7 +125,7 @@ class MyPlugin(Star):
         logger.info(message_chain)
 
         try:
-            moyu_img_path = capture_poster_without_obstacle("https://moyu.ranawa.com/")
+            moyu_img_path = await capture_poster_without_obstacle("https://moyu.ranawa.com/")
             if moyu_img_path:
                 chain = [
                     Comp.Image(moyu_img_path),
