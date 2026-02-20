@@ -2,6 +2,7 @@ from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from playwright.async_api import async_playwright
 
 from astrbot.api import logger
+
 from .playwright_manager import get_browser
 
 
@@ -11,9 +12,12 @@ async def capture_poster_without_obstacle(
     """异步版本：使用 Playwright 打开页面、移除遮挡并对 #poster 元素截图。"""
     browser = await get_browser("chromium")
     try:
-        async with async_playwright():
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(
+                headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"]
+            )
             context = await browser.new_context(
-                viewport={"width": 1920, "height": 1080},
+                viewport={"width": 1920, "height": 1080}
             )
             page = await context.new_page()
 
@@ -51,14 +55,30 @@ async def capture_poster_without_obstacle(
         return False
     # 使用 try/finally 确保即使出错也能关闭浏览器
     finally:
-        # 安全关闭资源
         for resource in [page, context]:
             if resource:
                 try:
-                    if not getattr(resource, "is_closed", lambda: False)():
-                        await resource.close()
-                except Exception:
-                    logger.debug(f"关闭资源失败: {type(resource).__name__}")
+                    if hasattr(resource, "is_closed") and resource.is_closed():
+                        continue
+                    await resource.close()
+                except Exception as e:
+                    # 📝 仅记录 warning，不 re-raise
+                    logger.warning(f"清理资源 {type(resource).__name__} 时警告: {e}")
+
+        # 2. 再关闭 context（会自动关闭其下所有 pages）
+        # if context and not context.is_closed():
+        #     try:
+        #         await context.close()
+        #     except Exception as e:
+        #         logger.warning(f"关闭 context 失败: {e}")
+
+        # 3. 【关键】仅当 browser 是本函数内创建的局部单例时才关闭
+        #    如果 browser 是插件全局单例，注释掉下面这段！
+        # if browser and browser.is_connected() and _is_local_browser:
+        #     try:
+        #         await browser.close()
+        #     except Exception as e:
+        #         logger.warning(f"关闭 browser 失败: {e}")
 
 
 if __name__ == "__main__":

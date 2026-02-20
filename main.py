@@ -32,17 +32,22 @@ class MyPlugin(Star):
             await self._start_scheduled_task(
                 cron_expr, self.plugin_config.get("target_sessions", [])
             )
+        else:
+            # 如果配置中禁用了定时任务，且当前有运行的定时任务，则停止它
+            if self.moyu_job_id:
+                await self._stop_scheduled_task()
 
     async def _start_scheduled_task(
         self, cron_expression: str = "0 8 * * *", target_sessions: list = []
     ):
         """启动定时任务"""
-        # 检查是否已有定时任务
+        # 如果已有定时任务，先删除旧任务
         if self.moyu_job_id:
-            job = await self.cron_manager.db.get_cron_job(self.moyu_job_id)
-            if job and job.enabled:
-                logger.info("定时摸鱼任务已经存在")
-                return
+            try:
+                await self.cron_manager.delete_job(self.moyu_job_id)
+            except Exception as e:
+                logger.error(f"删除旧定时任务失败: {e}")
+            self.moyu_job_id = None
 
         async def send_moyu_image(**kwargs):
             try:
@@ -63,7 +68,12 @@ class MyPlugin(Star):
                                     MessageSession,
                                 )
 
-                                session = MessageSession.from_str(session_str)
+                                # 解析会话字符串，支持完整格式和仅ID格式
+                                session = self._parse_session_string(session_str)
+                                if session is None:
+                                    logger.error(f"无法解析会话字符串: {session_str}")
+                                    continue
+
                                 await self.context.send_message(
                                     session, message_chain
                                 )  # 传递MessageChain对象
@@ -88,7 +98,12 @@ class MyPlugin(Star):
                                     MessageSession,
                                 )
 
-                                session = MessageSession.from_str(session_str)
+                                # 解析会话字符串，支持完整格式和仅ID格式
+                                session = self._parse_session_string(session_str)
+                                if session is None:
+                                    logger.error(f"无法解析会话字符串: {session_str}")
+                                    continue
+
                                 await self.context.send_message(
                                     session, error_msg
                                 )  # 传递MessageChain对象
@@ -117,6 +132,39 @@ class MyPlugin(Star):
             f"已启动定时摸鱼任务，ID: {self.moyu_job_id}，表达式: {cron_expression}"
         )
 
+    def _parse_session_string(self, session_str):
+        """解析会话字符串，支持完整格式和仅ID格式"""
+        from astrbot.core.platform.message_session import MessageSession
+        from astrbot.core.platform.message_type import MessageType
+
+        try:
+            # 尝试按完整格式解析
+            platform_id, message_type, session_id = session_str.split(":", 2)
+            return MessageSession(platform_id, MessageType(message_type), session_id)
+        except ValueError:
+            # 如果解析失败，假定这是仅ID格式，尝试从当前上下文获取默认值
+            # 这里假设默认是QQ群消息，实际应用中可能需要更灵活的配置
+            logger.warning(f"会话字符串格式不完整，尝试使用默认值: {session_str}")
+
+            # 如果字符串只包含数字（即会话ID），则使用默认平台和消息类型
+            if session_str.isdigit():
+                # 默认使用QQ平台和群消息类型
+                # 实际使用中可能需要从配置或其他地方获取默认值
+                return MessageSession("qq", MessageType.GROUP_MESSAGE, session_str)
+            else:
+                logger.error(f"无法解析会话字符串: {session_str}")
+                return None
+
+    async def _stop_scheduled_task(self):
+        """停止定时任务"""
+        if self.moyu_job_id:
+            try:
+                await self.cron_manager.delete_job(self.moyu_job_id)
+                logger.info(f"已停止定时摸鱼任务，ID: {self.moyu_job_id}")
+                self.moyu_job_id = None
+            except Exception as e:
+                logger.error(f"插件卸载时删除定时任务失败: {e}")
+
     # 注册指令的装饰器。指令名为 moyu。发送 `/moyu` 即可触发此指令，发送摸鱼图片
     @filter.command("moyu")
     async def moyu(self, event: AstrMessageEvent):
@@ -125,7 +173,9 @@ class MyPlugin(Star):
         logger.info(message_chain)
 
         try:
-            moyu_img_path = await capture_poster_without_obstacle("https://moyu.ranawa.com/")
+            moyu_img_path = await capture_poster_without_obstacle(
+                "https://moyu.ranawa.com/"
+            )
             if moyu_img_path:
                 chain = [
                     Comp.Image(moyu_img_path),
@@ -148,5 +198,6 @@ class MyPlugin(Star):
         if self.moyu_job_id:
             try:
                 await self.cron_manager.delete_job(self.moyu_job_id)
+                self.moyu_job_id = None
             except Exception as e:
                 logger.error(f"插件卸载时删除定时任务失败: {e}")
