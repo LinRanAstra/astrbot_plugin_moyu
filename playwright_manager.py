@@ -37,7 +37,7 @@ def _ensure_installed(browser: Literal["chromium", "firefox", "webkit"] = "chrom
         print(f"📦 正在安装 {browser}...")
         _BROWSERS_PATH.mkdir(parents=True, exist_ok=True)
         subprocess.run(
-            [sys.executable, "-m", "playwright", "install", browser], check=True
+            [sys.executable, "-m", "playwright", "install-deps", browser], check=True
         )
         _installed_browsers.append(browser)
         print(f"✅ {browser} 安装完成")
