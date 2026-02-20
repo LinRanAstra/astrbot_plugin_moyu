@@ -192,6 +192,39 @@ class MyPlugin(Star):
 
         yield event.chain_result(chain)
 
+    async def on_config_updated(self, new_config):
+        """当插件配置更新时调用此方法"""
+        old_enabled = self.plugin_config.get("enabled", False) if self.plugin_config else False
+        new_enabled = new_config.get("enabled", False)
+        
+        # 更新配置
+        self.plugin_config = new_config
+        
+        # 如果启用状态发生变化
+        if old_enabled != new_enabled:
+            if new_enabled:
+                # 从禁用变为启用，启动任务
+                cron_expr = self.plugin_config.get("cron_expression", "0 8 * * *")
+                target_sessions = self.plugin_config.get("target_sessions", [])
+                await self._start_scheduled_task(cron_expr, target_sessions)
+            else:
+                # 从启用变为禁用，停止任务
+                await self._stop_scheduled_task()
+        elif new_enabled:
+            # 启用状态下，检查cron表达式是否改变
+            old_cron = (self.plugin_config or {}).get("cron_expression", "0 8 * * *")
+            new_cron = new_config.get("cron_expression", "0 8 * * *")
+            
+            if old_cron != new_cron:
+                # cron表达式改变，更新任务
+                target_sessions = new_config.get("target_sessions", [])
+                
+                # 先停止旧任务
+                await self._stop_scheduled_task()
+                
+                # 启动新任务
+                await self._start_scheduled_task(new_cron, target_sessions)
+
     async def terminate(self):
         """可选择实现异步的插件销毁方法，当插件被卸载/停用时会调用。"""
         # 插件卸载时删除定时任务
