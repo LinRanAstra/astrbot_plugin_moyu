@@ -235,3 +235,40 @@ def uninstall(browser: Optional[Literal["chromium", "firefox", "webkit"]] = None
     if not browser and not any(_BROWSERS_PATH.iterdir()):
         _BROWSERS_PATH.rmdir()
         print("🧹 浏览器目录已清空")
+
+
+if __name__ == "__main__":
+    # 示例用法：
+    # 插件中调用
+    async def capture_poster_without_obstacle(url: str) -> str | None:
+        browser = None
+        context = None
+        page = None
+
+        try:
+            # ✅ 自动检查并安装依赖 + 浏览器
+            browser = await get_browser("chromium")
+
+            context = await browser.new_context(
+                viewport={"width": 1200, "height": 800},
+                user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
+            )
+            page = await context.new_page()
+
+            await page.goto(url.strip(), wait_until="networkidle", timeout=30000)
+            await page.screenshot(path="poster_clean.png", full_page=True)
+            return "poster_clean.png"
+
+        except Exception as e:
+            logger.error(f"截图失败：{e}")
+            return None
+        finally:
+            # 安全关闭资源
+            for resource in [page, context]:
+                if resource:
+                    try:
+                        if not getattr(resource, "is_closed", lambda: False)():
+                            await resource.close()
+                    except:
+                        pass
+            # ⚠️ 不要关闭 browser，它是全局复用的
